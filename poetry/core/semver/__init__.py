@@ -1,6 +1,8 @@
 import re
 
 from .empty_constraint import EmptyConstraint
+from .multi_constraint import MultiVersionConstraint
+from .negative_constraint import NegativeVersionRange
 from .patterns import BASIC_CONSTRAINT
 from .patterns import CARET_CONSTRAINT
 from .patterns import TILDE_CONSTRAINT
@@ -33,9 +35,7 @@ def parse_constraint(constraints):  # type: (str) -> VersionConstraint
         if len(constraint_objects) == 1:
             constraint = constraint_objects[0]
         else:
-            constraint = constraint_objects[0]
-            for next_constraint in constraint_objects[1:]:
-                constraint = constraint.intersect(next_constraint)
+            constraint = MultiVersionConstraint.of(*constraint_objects)
 
         or_groups.append(constraint)
 
@@ -113,20 +113,17 @@ def parse_single_constraint(constraint):  # type: (str) -> VersionConstraint
                 always_include_max_prerelease=True,
             )
         else:
-            if major == 0:
-                result = VersionRange(max=Version(1, 0, 0))
-            else:
-                version = Version(major, 0, 0)
+            version = Version(major, 0, 0)
 
-                result = VersionRange(
-                    version,
-                    version.next_major,
-                    include_min=True,
-                    always_include_max_prerelease=True,
-                )
+            result = VersionRange(
+                version,
+                version.next_major,
+                include_min=True,
+                always_include_max_prerelease=True,
+            )
 
         if op == "!=":
-            result = VersionRange().difference(result)
+            result = NegativeVersionRange(result, constraint)
 
         return result
 
@@ -155,7 +152,7 @@ def parse_single_constraint(constraint):  # type: (str) -> VersionConstraint
         elif op == ">=":
             return VersionRange(min=version, include_min=True)
         elif op == "!=":
-            return VersionUnion(VersionRange(max=version), VersionRange(min=version))
+            return NegativeVersionRange(version, op + str(version))
         else:
             return version
 

@@ -66,7 +66,9 @@ class VersionUnion(VersionConstraint):
         if len(merged) == 1:
             return merged[0]
 
-        return VersionUnion(*merged)
+        union = VersionUnion(*merged)
+
+        return union
 
     def is_empty(self):
         return False

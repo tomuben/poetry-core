@@ -1,9 +1,10 @@
 import pytest
 
+from poetry.core.semver import NegativeVersionRange
 from poetry.core.semver import Version
 from poetry.core.semver import VersionRange
-from poetry.core.semver import VersionUnion
 from poetry.core.semver import parse_constraint
+from poetry.core.semver.multi_constraint import MultiVersionConstraint
 
 
 @pytest.mark.parametrize(
@@ -25,6 +26,7 @@ from poetry.core.semver import parse_constraint
         ("1.2.3b5", Version(1, 2, 3, pre="b5")),
         (">= 1.2.3", VersionRange(min=Version(1, 2, 3), include_min=True)),
         (">dev", VersionRange(min=Version(0, 0, pre="dev"))),  # Issue 206
+        ("!=1.2.3", NegativeVersionRange(Version(1, 2, 3), "!=1.2.3")),
     ],
 )
 def test_parse_constraint(input, constraint):
@@ -42,9 +44,9 @@ def test_parse_constraint(input, constraint):
         ("2.x", VersionRange(Version(2, 0, 0), Version(3, 0, 0), True)),
         ("2.x.x", VersionRange(Version(2, 0, 0), Version(3, 0, 0), True)),
         ("2.2.X", VersionRange(Version(2, 2, 0), Version(2, 3, 0), True)),
-        ("0.*", VersionRange(max=Version(1, 0, 0))),
-        ("0.*.*", VersionRange(max=Version(1, 0, 0))),
-        ("0.x", VersionRange(max=Version(1, 0, 0))),
+        ("0.*", VersionRange(Version(0, 0, 0), Version(1, 0, 0), True)),
+        ("0.*.*", VersionRange(Version(0, 0, 0), Version(1, 0, 0), True)),
+        ("0.x", VersionRange(Version(0, 0, 0), Version(1, 0, 0), True)),
     ],
 )
 def test_parse_constraint_wildcard(input, constraint):
@@ -125,10 +127,15 @@ def test_parse_constraint_multi(input):
     "input",
     [">=2.7,!=3.0.*,!=3.1.*", ">=2.7, !=3.0.*, !=3.1.*", ">= 2.7, != 3.0.*, != 3.1.*"],
 )
-def test_parse_constraint_multi_wilcard(input):
-    assert parse_constraint(input) == VersionUnion(
-        VersionRange(Version(2, 7, 0), Version(3, 0, 0), True, False),
-        VersionRange(Version(3, 2, 0), None, True, False),
+def test_parse_constraint_multi_wildcard(input):
+    assert parse_constraint(input) == MultiVersionConstraint(
+        VersionRange(Version(2, 7, 0), None, True, False),
+        NegativeVersionRange(
+            VersionRange(Version(3, 0, 0), Version(3, 1, 0), True, False), "!=3.0.*"
+        ),
+        NegativeVersionRange(
+            VersionRange(Version(3, 1, 0), Version(3, 2, 0), True, False), "!=3.1.*"
+        ),
     )
 
 
@@ -137,24 +144,62 @@ def test_parse_constraint_multi_wilcard(input):
     [
         (
             "!=v2.*",
-            VersionRange(max=Version.parse("2.0")).union(
-                VersionRange(Version.parse("3.0"), include_min=True)
+            NegativeVersionRange(
+                VersionRange(
+                    min=Version.parse("2.0"), max=Version.parse("3.0"), include_min=True
+                ),
+                "!=v2.*",
             ),
         ),
         (
             "!=2.*.*",
-            VersionRange(max=Version.parse("2.0")).union(
-                VersionRange(Version.parse("3.0"), include_min=True)
+            NegativeVersionRange(
+                VersionRange(
+                    min=Version.parse("2.0"), max=Version.parse("3.0"), include_min=True
+                ),
+                "!=2.*.*",
             ),
         ),
         (
-            "!=2.0.*",
-            VersionRange(max=Version.parse("2.0")).union(
-                VersionRange(Version.parse("2.1"), include_min=True)
+            "!=2.2.*",
+            NegativeVersionRange(
+                VersionRange(
+                    min=Version.parse("2.2"), max=Version.parse("2.3"), include_min=True
+                ),
+                "!=2.2.*",
             ),
         ),
-        ("!=0.*", VersionRange(Version.parse("1.0"), include_min=True)),
-        ("!=0.*.*", VersionRange(Version.parse("1.0"), include_min=True)),
+        (
+            "!=0.*",
+            NegativeVersionRange(
+                VersionRange(
+                    min=Version.parse("0.0"), max=Version.parse("1.0"), include_min=True
+                ),
+                "!=0.*",
+            ),
+        ),
+        (
+            "!=0.*.*",
+            NegativeVersionRange(
+                VersionRange(
+                    min=Version.parse("0.0.0"),
+                    max=Version.parse("1.0.0"),
+                    include_min=True,
+                ),
+                "!=0.*.*",
+            ),
+        ),
+        (
+            "!=0.3.*",
+            NegativeVersionRange(
+                VersionRange(
+                    min=Version.parse("0.3.0"),
+                    max=Version.parse("0.4.0"),
+                    include_min=True,
+                ),
+                "!=0.3.*",
+            ),
+        ),
     ],
 )
 def test_parse_constraints_negative_wildcard(input, constraint):
